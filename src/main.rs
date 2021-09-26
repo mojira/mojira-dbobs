@@ -19,15 +19,8 @@ const ALLOWED_ROLES: &[(u64, u64)] = &[
     (647810384031645728, 647812604949037056),
 ];
 
-#[cfg(debug_assertions)]
 const RESTART_SH: &str = "./restart.sh";
-#[cfg(not(debug_assertions))]
-const RESTART_SH: &str = "../mojira-discord-bot/restart.sh";
-
-#[cfg(debug_assertions)]
 const STOP_SH: &str = "./stop.sh";
-#[cfg(not(debug_assertions))]
-const STOP_SH: &str = "../mojira-discord-bot/stop.sh";
 
 async fn verify_user(
     ctx: &Context,
@@ -47,6 +40,7 @@ async fn verify_user(
     Ok(false)
 }
 
+#[derive(Debug)]
 enum MojiraBotCommandResponse {
     Success(&'static str),
     Error(&'static str),
@@ -68,7 +62,9 @@ impl MojiraBotCommandResponse {
 }
 
 fn run_sh_file(name: &str) -> Result<(), anyhow::Error> {
-    std::process::Command::new("sh").arg(name).output()?;
+    let output = std::process::Command::new("sh").arg(name).output()?;
+
+    eprintln!("{} output: {:?}", name, output);
     Ok(())
 }
 
@@ -118,6 +114,8 @@ async fn run_command(
     ctx: &Context,
     command: &ApplicationCommandInteraction,
 ) -> Result<MojiraBotCommandResponse, anyhow::Error> {
+    eprintln!("replying to command from user {}", command.user);
+
     let user_verified = verify_user(ctx, command.guild_id, &command.user).await?;
 
     let response = if command.data.name.as_str() != "mojirabot" {
@@ -138,6 +136,8 @@ async fn run_command(
         MojiraBotCommandResponse::Error("You don't have permission to execute this command.")
     };
 
+    eprintln!("command response: {:?}", response);
+
     Ok(response)
 }
 
@@ -148,7 +148,9 @@ impl EventHandler for CommandHandler {
             match run_command(&ctx, &command).await {
                 Ok(response) => {
                     match response.send(&ctx, &command).await {
-                        Ok(_) => {}
+                        Ok(_) => {
+                            eprintln!("Command successfully replied to.")
+                        }
                         Err(reason) => {
                             eprintln!("Error while sending reply: {:?}", reason)
                         }

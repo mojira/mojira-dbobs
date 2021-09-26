@@ -1,1 +1,2 @@
-echo "restart" >> ./out
+cd ../mojira-discord-bot
+./restart.sh

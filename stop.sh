@@ -1,1 +1,2 @@
-echo "stop" >> ./out
+cd ../mojira-discord-bot
+./stop.sh
