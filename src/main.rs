@@ -1,24 +1,39 @@
 use std::env;
 
-use serenity::model::interactions::application_command::ApplicationCommand;
-use serenity::model::interactions::application_command::ApplicationCommandInteraction;
+use anyhow::anyhow;
+
+use serenity::model::interactions::application_command::*;
 use serenity::model::prelude::*;
 use serenity::prelude::*;
 use serenity::Client;
 
 struct CommandHandler;
 
+// (guild, role)
+const ALLOWED_ROLES: &[(u64, u64)] = &[
+    // (test server, admin)
+    (646317854584471553, 891087368801632286),
+    // (mojira, moderator)
+    (647810384031645728, 647812320629882910),
+    // (mojira, helper)
+    (647810384031645728, 647812604949037056),
+];
+
+#[cfg(debug_assertions)]
+const RESTART_SH: &str = "./restart.sh";
+#[cfg(not(debug_assertions))]
+const RESTART_SH: &str = "../mojira-discord-bot/restart.sh";
+
+#[cfg(debug_assertions)]
+const STOP_SH: &str = "./stop.sh";
+#[cfg(not(debug_assertions))]
+const STOP_SH: &str = "../mojira-discord-bot/stop.sh";
+
 async fn verify_user(
     ctx: &Context,
     guild: Option<GuildId>,
     user: &User,
-) -> Result<bool, serenity::Error> {
-    // (guild, role)
-    const ALLOWED_ROLES: &[(u64, u64)] = &[
-        // (test server, admin)
-        (646317854584471553, 891087368801632286),
-    ];
-
+) -> Result<bool, anyhow::Error> {
     if let Some(guild) = guild {
         let guild_id = guild.0;
 
@@ -32,63 +47,116 @@ async fn verify_user(
     Ok(false)
 }
 
-async fn run_command(
-    ctx: Context,
-    command: ApplicationCommandInteraction,
-) -> Result<(), serenity::Error> {
-    let user_verified = verify_user(&ctx, command.guild_id, &command.user).await?;
+enum MojiraBotCommandResponse {
+    Success(&'static str),
+    Error(&'static str),
+}
 
-    if command.data.name.as_str() != "mojirabot" {
-        unimplemented!();
+impl MojiraBotCommandResponse {
+    async fn send(
+        self,
+        ctx: &Context,
+        command: &ApplicationCommandInteraction,
+    ) -> Result<(), anyhow::Error> {
+        let (msg, ephermal) = match self {
+            MojiraBotCommandResponse::Success(msg) => (msg, false),
+            MojiraBotCommandResponse::Error(msg) => (msg, true),
+        };
+
+        reply_to_interaction(ctx, command, msg, ephermal).await
     }
+}
 
-    if !user_verified {
-        command
-            .create_interaction_response(&ctx.http, |response| {
-                response
-                    .kind(InteractionResponseType::ChannelMessageWithSource)
-                    .interaction_response_data(|message| {
-                        message
-                            .content("You don't have permission to execute this command.")
-                            .flags(InteractionApplicationCommandCallbackDataFlags::EPHEMERAL)
-                    })
-            })
-            .await?;
-    } else {
-        let content = match command
+fn run_sh_file(name: &str) -> Result<(), anyhow::Error> {
+    std::process::Command::new("sh").arg(name).output()?;
+    Ok(())
+}
+
+async fn restart_command() -> Result<MojiraBotCommandResponse, anyhow::Error> {
+    run_sh_file(RESTART_SH)?;
+
+    Ok(MojiraBotCommandResponse::Success(
+        "A restart command has been issued to MojiraBot.",
+    ))
+}
+
+async fn stop_command() -> Result<MojiraBotCommandResponse, anyhow::Error> {
+    run_sh_file(STOP_SH)?;
+
+    Ok(MojiraBotCommandResponse::Success(
+        "A stop command has been issued to MojiraBot.",
+    ))
+}
+
+async fn reply_to_interaction(
+    ctx: &Context,
+    command: &ApplicationCommandInteraction,
+    message: &str,
+    ephermal: bool,
+) -> Result<(), anyhow::Error> {
+    command
+        .create_interaction_response(&ctx.http, |response| {
+            response
+                .kind(InteractionResponseType::ChannelMessageWithSource)
+                .interaction_response_data(|data| {
+                    let response_data = data.content(message);
+
+                    if ephermal {
+                        response_data
+                            .flags(InteractionApplicationCommandCallbackDataFlags::EPHEMERAL);
+                    }
+
+                    response_data
+                })
+        })
+        .await?;
+
+    Ok(())
+}
+
+async fn run_command(
+    ctx: &Context,
+    command: &ApplicationCommandInteraction,
+) -> Result<MojiraBotCommandResponse, anyhow::Error> {
+    let user_verified = verify_user(ctx, command.guild_id, &command.user).await?;
+
+    let response = if command.data.name.as_str() != "mojirabot" {
+        MojiraBotCommandResponse::Error("I don't know this command yet, sorry!")
+    } else if user_verified {
+        let subcommand = command
             .data
             .options
             .get(0)
-            .unwrap()
-            .value
-            .as_ref()
-            .unwrap()
-            .as_str()
-            .unwrap()
-        {
-            "restart" => "A restart command has been issued to MojiraBot.",
-            "stop" => "A stop command has been issued to MojiraBot.",
+            .ok_or_else(|| anyhow!("Missing subcommand"))?;
+
+        match subcommand.name.as_str() {
+            "restart" => restart_command().await?,
+            "stop" => stop_command().await?,
             _ => unimplemented!(),
-        };
+        }
+    } else {
+        MojiraBotCommandResponse::Error("You don't have permission to execute this command.")
+    };
 
-        command
-            .create_interaction_response(&ctx.http, |response| {
-                response
-                    .kind(InteractionResponseType::ChannelMessageWithSource)
-                    .interaction_response_data(|message| message.content(content))
-            })
-            .await?;
-    }
-
-    Ok(())
+    Ok(response)
 }
 
 #[serenity::async_trait]
 impl EventHandler for CommandHandler {
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
         if let Interaction::ApplicationCommand(command) = interaction {
-            if let Err(reason) = run_command(ctx, command).await {
-                eprintln!("Error while executing command: {:?}", reason);
+            match run_command(&ctx, &command).await {
+                Ok(response) => {
+                    match response.send(&ctx, &command).await {
+                        Ok(_) => {}
+                        Err(reason) => {
+                            eprintln!("Error while sending reply: {:?}", reason)
+                        }
+                    };
+                }
+                Err(reason) => {
+                    eprintln!("Error while executing command: {:?}", reason);
+                }
             }
         }
     }
@@ -103,23 +171,22 @@ impl EventHandler for CommandHandler {
                     .description("Restart or shutdown MojiraBot")
                     .create_option(|option| {
                         option
-                            .name("action")
-                            .description("The action to take")
-                            .kind(application_command::ApplicationCommandOptionType::String)
-                            .required(true)
-                            .add_string_choice("restart", "restart")
-                            .add_string_choice("stop", "stop")
+                            .name("restart")
+                            .description("Restart MojiraBot")
+                            .kind(ApplicationCommandOptionType::SubCommand)
+                    })
+                    .create_option(|option| {
+                        option
+                            .name("stop")
+                            .description("Stop MojiraBot")
+                            .kind(ApplicationCommandOptionType::SubCommand)
                     })
             })
         })
         .await;
 
-        match commands {
-            Ok(commands) => eprintln!(
-                "I now have the following global slash commands: {:#?}",
-                commands
-            ),
-            Err(reason) => eprintln!("Could not register slash commands: {}", reason),
+        if let Err(reason) = commands {
+            eprintln!("Could not register slash commands: {}", reason)
         }
     }
 }
