@@ -17,29 +17,51 @@ impl Observer {
         ctx: &Context,
         command: &ApplicationCommandInteraction,
     ) -> Result<MojiraBotCommandResponse, anyhow::Error> {
-        eprintln!("replying to command from user {}", command.user);
+        eprintln!("replying to command from user {}", command.user.tag());
 
         let user_verified = verify_user(ctx, command.guild_id, &command.user).await?;
 
-        let response = if command.data.name.as_str() != "mojirabot" {
-            MojiraBotCommandResponse::Error("I don't know this command yet, sorry!")
-        } else if user_verified {
-            let subcommand = command
-                .data
-                .options
-                .get(0)
-                .ok_or_else(|| anyhow!("Missing subcommand"))?;
+        let response = if user_verified {
+            match command.data.name.as_str() {
+                "mojirabot" => {
+                    let subcommand = command
+                        .data
+                        .options
+                        .get(0)
+                        .ok_or_else(|| anyhow!("Missing subcommand"))?;
 
-            match subcommand.name.as_str() {
-                "restart" => {
-                    let restart_result = self.restart_bot().await?;
-                    MojiraBotCommandResponse::Success(restart_result)
+                    match subcommand.name.as_str() {
+                        "restart" => {
+                            let restart_result = self.restart_bot().await?;
+                            MojiraBotCommandResponse::Success(restart_result)
+                        }
+                        "stop" => {
+                            let stop_result = self.stop_bot().await?;
+                            MojiraBotCommandResponse::Success(stop_result)
+                        }
+                        _ => return Err(anyhow!("Unknown subcommand")),
+                    }
                 }
-                "stop" => {
-                    let stop_result = self.stop_bot().await?;
-                    MojiraBotCommandResponse::Success(stop_result)
+                "autorestart" => {
+                    let subcommand = command
+                        .data
+                        .options
+                        .get(0)
+                        .ok_or_else(|| anyhow!("Missing subcommand"))?;
+
+                    match subcommand.name.as_str() {
+                        "on" => {
+                            self.set_enabled(true).await;
+                            MojiraBotCommandResponse::Success("I will now automatically restart MojiraBot when I see that it is offline.")
+                        }
+                        "off" => {
+                            self.set_enabled(false).await;
+                            MojiraBotCommandResponse::Success("I will not restart MojiraBot automatically. Please use the `/mojirabot` commands to restart it manually if necessary.")
+                        }
+                        _ => return Err(anyhow!("Unknown subcommand")),
+                    }
                 }
-                _ => unimplemented!(),
+                _ => MojiraBotCommandResponse::Error("I don't know this command yet, sorry!"),
             }
         } else {
             MojiraBotCommandResponse::Error("You don't have permission to execute this command.")
@@ -151,23 +173,41 @@ impl EventHandler for Observer {
         eprintln!("{} is connected!", ready.user.name);
 
         let commands = Command::set_global_application_commands(&ctx.http, |commands| {
-            commands.create_application_command(|command| {
-                command
-                    .name("mojirabot")
-                    .description("Restart or shutdown MojiraBot")
-                    .create_option(|option| {
-                        option
-                            .name("restart")
-                            .description("Restart MojiraBot")
-                            .kind(CommandOptionType::SubCommand)
-                    })
-                    .create_option(|option| {
-                        option
-                            .name("stop")
-                            .description("Stop MojiraBot")
-                            .kind(CommandOptionType::SubCommand)
-                    })
-            })
+            commands
+                .create_application_command(|command| {
+                    command
+                        .name("mojirabot")
+                        .description("Restart or shutdown MojiraBot")
+                        .create_option(|option| {
+                            option
+                                .name("restart")
+                                .description("Restart MojiraBot")
+                                .kind(CommandOptionType::SubCommand)
+                        })
+                        .create_option(|option| {
+                            option
+                                .name("stop")
+                                .description("Stop MojiraBot")
+                                .kind(CommandOptionType::SubCommand)
+                        })
+                })
+                .create_application_command(|command| {
+                    command
+                        .name("autorestart")
+                        .description("Enable or disable autorestart")
+                        .create_option(|option| {
+                            option
+                                .name("on")
+                                .description("Enable autorestart")
+                                .kind(CommandOptionType::SubCommand)
+                        })
+                        .create_option(|option| {
+                            option
+                                .name("off")
+                                .description("Disable autorestart")
+                                .kind(CommandOptionType::SubCommand)
+                        })
+                })
         })
         .await;
 

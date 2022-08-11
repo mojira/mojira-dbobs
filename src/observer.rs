@@ -56,7 +56,7 @@ impl Observer {
             let activity = if enabled {
                 Activity::watching("MojiraBot")
             } else {
-                Activity::listening("for commands")
+                Activity::listening("commands")
             };
             ctx.set_activity(activity).await;
         }
