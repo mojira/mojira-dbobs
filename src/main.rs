@@ -1,6 +1,6 @@
 use std::env;
 
-use serenity::Client;
+use serenity::{prelude::GatewayIntents, Client};
 
 mod commands;
 use commands::CommandHandler;
@@ -15,7 +15,7 @@ async fn main() {
         .parse()
         .expect("Discord user id is not a valid id");
 
-    let mut client = Client::builder(token)
+    let mut client = Client::builder(token, GatewayIntents::non_privileged())
         .event_handler(CommandHandler)
         .application_id(client_id)
         .await

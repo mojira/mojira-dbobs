@@ -1,6 +1,11 @@
 use anyhow::anyhow;
 
-use serenity::model::interactions::application_command::*;
+use serenity::model::application::{
+    command::{Command, CommandOptionType},
+    interaction::{
+        application_command::ApplicationCommandInteraction, Interaction, InteractionResponseType,
+    },
+};
 use serenity::model::prelude::*;
 use serenity::prelude::*;
 
@@ -95,8 +100,7 @@ async fn reply_to_interaction(
                     let response_data = data.content(message);
 
                     if ephermal {
-                        response_data
-                            .flags(InteractionApplicationCommandCallbackDataFlags::EPHEMERAL);
+                        response_data.flags(interaction::MessageFlags::EPHEMERAL);
                     }
 
                     response_data
@@ -163,7 +167,7 @@ impl EventHandler for CommandHandler {
     async fn ready(&self, ctx: Context, ready: Ready) {
         eprintln!("{} is connected!", ready.user.name);
 
-        let commands = ApplicationCommand::set_global_application_commands(&ctx.http, |commands| {
+        let commands = Command::set_global_application_commands(&ctx.http, |commands| {
             commands.create_application_command(|command| {
                 command
                     .name("mojirabot")
@@ -172,13 +176,13 @@ impl EventHandler for CommandHandler {
                         option
                             .name("restart")
                             .description("Restart MojiraBot")
-                            .kind(ApplicationCommandOptionType::SubCommand)
+                            .kind(CommandOptionType::SubCommand)
                     })
                     .create_option(|option| {
                         option
                             .name("stop")
                             .description("Stop MojiraBot")
-                            .kind(ApplicationCommandOptionType::SubCommand)
+                            .kind(CommandOptionType::SubCommand)
                     })
             })
         })
