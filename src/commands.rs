@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use anyhow::anyhow;
 
 use serenity::model::application::{
@@ -9,7 +11,55 @@ use serenity::model::application::{
 use serenity::model::prelude::*;
 use serenity::prelude::*;
 
-pub struct CommandHandler;
+use crate::observer::Observer;
+
+pub struct CommandHandler {
+    observer: Arc<Mutex<Observer>>,
+}
+
+impl CommandHandler {
+    pub fn new(observer: Arc<Mutex<Observer>>) -> Self {
+        Self { observer }
+    }
+
+    async fn run_command(
+        &self,
+        ctx: &Context,
+        command: &ApplicationCommandInteraction,
+    ) -> Result<MojiraBotCommandResponse, anyhow::Error> {
+        eprintln!("replying to command from user {}", command.user);
+
+        let user_verified = verify_user(ctx, command.guild_id, &command.user).await?;
+
+        let response = if command.data.name.as_str() != "mojirabot" {
+            MojiraBotCommandResponse::Error("I don't know this command yet, sorry!")
+        } else if user_verified {
+            let subcommand = command
+                .data
+                .options
+                .get(0)
+                .ok_or_else(|| anyhow!("Missing subcommand"))?;
+
+            match subcommand.name.as_str() {
+                "restart" => {
+                    let restart_result = self.observer.lock().await.restart_bot().await?;
+                    MojiraBotCommandResponse::Success(restart_result)
+                }
+                "stop" => {
+                    let stop_result = self.observer.lock().await.stop_bot().await?;
+                    MojiraBotCommandResponse::Success(stop_result)
+                }
+                _ => unimplemented!(),
+            }
+        } else {
+            MojiraBotCommandResponse::Error("You don't have permission to execute this command.")
+        };
+
+        eprintln!("command response: {:?}", response);
+
+        Ok(response)
+    }
+}
 
 // (guild, role)
 const ALLOWED_ROLES: &[(u64, u64)] = &[
@@ -20,9 +70,6 @@ const ALLOWED_ROLES: &[(u64, u64)] = &[
     // (mojira, helper)
     (647810384031645728, 647812604949037056),
 ];
-
-const RESTART_SH: &str = "./restart.sh";
-const STOP_SH: &str = "./stop.sh";
 
 async fn verify_user(
     ctx: &Context,
@@ -63,29 +110,6 @@ impl MojiraBotCommandResponse {
     }
 }
 
-fn run_sh_file(name: &str) -> Result<(), anyhow::Error> {
-    let output = std::process::Command::new("sh").arg(name).output()?;
-
-    eprintln!("{} output: {:?}", name, output);
-    Ok(())
-}
-
-async fn restart_command() -> Result<MojiraBotCommandResponse, anyhow::Error> {
-    run_sh_file(RESTART_SH)?;
-
-    Ok(MojiraBotCommandResponse::Success(
-        "A restart command has been issued to MojiraBot.",
-    ))
-}
-
-async fn stop_command() -> Result<MojiraBotCommandResponse, anyhow::Error> {
-    run_sh_file(STOP_SH)?;
-
-    Ok(MojiraBotCommandResponse::Success(
-        "A stop command has been issued to MojiraBot.",
-    ))
-}
-
 async fn reply_to_interaction(
     ctx: &Context,
     command: &ApplicationCommandInteraction,
@@ -111,42 +135,11 @@ async fn reply_to_interaction(
     Ok(())
 }
 
-async fn run_command(
-    ctx: &Context,
-    command: &ApplicationCommandInteraction,
-) -> Result<MojiraBotCommandResponse, anyhow::Error> {
-    eprintln!("replying to command from user {}", command.user);
-
-    let user_verified = verify_user(ctx, command.guild_id, &command.user).await?;
-
-    let response = if command.data.name.as_str() != "mojirabot" {
-        MojiraBotCommandResponse::Error("I don't know this command yet, sorry!")
-    } else if user_verified {
-        let subcommand = command
-            .data
-            .options
-            .get(0)
-            .ok_or_else(|| anyhow!("Missing subcommand"))?;
-
-        match subcommand.name.as_str() {
-            "restart" => restart_command().await?,
-            "stop" => stop_command().await?,
-            _ => unimplemented!(),
-        }
-    } else {
-        MojiraBotCommandResponse::Error("You don't have permission to execute this command.")
-    };
-
-    eprintln!("command response: {:?}", response);
-
-    Ok(response)
-}
-
 #[serenity::async_trait]
 impl EventHandler for CommandHandler {
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
         if let Interaction::ApplicationCommand(command) = interaction {
-            match run_command(&ctx, &command).await {
+            match self.run_command(&ctx, &command).await {
                 Ok(response) => {
                     match response.send(&ctx, &command).await {
                         Ok(_) => {
