@@ -46,11 +46,11 @@ impl Observer {
 
     async fn set_ctx(&self, ctx: Context) {
         self.data().await.ctx = Some(ctx);
-        self.set_enabled(self.data().await.enabled).await;
+        self.update_activity().await;
     }
 
-    pub async fn set_enabled(&self, enabled: bool) {
-        self.data().await.enabled = enabled;
+    async fn update_activity(&self) {
+        let enabled = self.data().await.enabled;
 
         if let Some(ctx) = &self.data().await.ctx {
             let activity = if enabled {
@@ -60,6 +60,11 @@ impl Observer {
             };
             ctx.set_activity(activity).await;
         }
+    }
+
+    pub async fn set_enabled(&self, enabled: bool) {
+        self.data().await.enabled = enabled;
+        self.update_activity().await;
     }
 
     fn run_sh_file(name: &str) -> Result<(), anyhow::Error> {
