@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use anyhow::anyhow;
 
 use serenity::model::application::{
@@ -13,15 +11,7 @@ use serenity::prelude::*;
 
 use crate::observer::Observer;
 
-pub struct CommandHandler {
-    observer: Arc<Mutex<Observer>>,
-}
-
-impl CommandHandler {
-    pub fn new(observer: Arc<Mutex<Observer>>) -> Self {
-        Self { observer }
-    }
-
+impl Observer {
     async fn run_command(
         &self,
         ctx: &Context,
@@ -42,11 +32,11 @@ impl CommandHandler {
 
             match subcommand.name.as_str() {
                 "restart" => {
-                    let restart_result = self.observer.lock().await.restart_bot().await?;
+                    let restart_result = self.restart_bot().await?;
                     MojiraBotCommandResponse::Success(restart_result)
                 }
                 "stop" => {
-                    let stop_result = self.observer.lock().await.stop_bot().await?;
+                    let stop_result = self.stop_bot().await?;
                     MojiraBotCommandResponse::Success(stop_result)
                 }
                 _ => unimplemented!(),
@@ -110,7 +100,7 @@ impl MojiraBotCommandResponse {
     }
 }
 
-async fn reply_to_interaction(
+pub async fn reply_to_interaction(
     ctx: &Context,
     command: &ApplicationCommandInteraction,
     message: &str,
@@ -136,7 +126,7 @@ async fn reply_to_interaction(
 }
 
 #[serenity::async_trait]
-impl EventHandler for CommandHandler {
+impl EventHandler for Observer {
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
         if let Interaction::ApplicationCommand(command) = interaction {
             match self.run_command(&ctx, &command).await {
@@ -182,7 +172,9 @@ impl EventHandler for CommandHandler {
         .await;
 
         if let Err(reason) = commands {
-            eprintln!("Could not register slash commands: {}", reason)
+            eprintln!("Could not register slash commands: {}", reason);
         }
+
+        self.run(ctx).await;
     }
 }

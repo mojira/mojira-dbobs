@@ -1,10 +1,8 @@
-use std::{env, sync::Arc};
+use std::env;
 
 use serenity::{prelude::GatewayIntents, Client};
-use tokio::sync::Mutex;
 
-use commands::CommandHandler;
-use observer::{Observer, ObserverService};
+use observer::Observer;
 
 mod commands;
 mod observer;
@@ -19,10 +17,8 @@ async fn main() {
         .parse()
         .expect("Discord user id is not a valid id");
 
-    let observer = Arc::new(Mutex::new(Observer::new()));
-
     let mut client = Client::builder(token, GatewayIntents::non_privileged())
-        .event_handler(CommandHandler::new(observer.clone()))
+        .event_handler(Observer::new())
         .application_id(client_id)
         .await
         .expect("Could not create client");
@@ -30,7 +26,4 @@ async fn main() {
     if let Err(reason) = client.start().await {
         eprintln!("Client error: {}", reason);
     }
-
-    let service = ObserverService::new(observer);
-    service.run().await;
 }
