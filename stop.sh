@@ -1,2 +1,2 @@
-cd ../mojira-discord-bot
+cd ../discord-bot
 ./stop.sh
