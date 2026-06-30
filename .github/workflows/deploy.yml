@@ -21,4 +21,4 @@ jobs:
         project_folder: dbobs
         script: |
           cargo build
-          ./debobs-restart.sh
+          ./dbobs-restart.sh
