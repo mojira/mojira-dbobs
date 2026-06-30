@@ -1,11 +1,6 @@
 use anyhow::anyhow;
 
-use serenity::model::application::{
-    command::{Command, CommandOptionType},
-    interaction::{
-        application_command::ApplicationCommandInteraction, Interaction, InteractionResponseType,
-    },
-};
+use serenity::all::{CreateCommand, CreateCommandOption, CreateInteractionResponse, CreateInteractionResponseMessage};
 use serenity::model::prelude::*;
 use serenity::prelude::*;
 
@@ -15,7 +10,7 @@ impl Observer {
     async fn run_command(
         &self,
         ctx: &Context,
-        command: &ApplicationCommandInteraction,
+        command: &CommandInteraction,
     ) -> Result<MojiraBotCommandResponse, anyhow::Error> {
         eprintln!("replying to command from user {}", command.user.tag());
 
@@ -88,11 +83,9 @@ async fn verify_user(
     guild: Option<GuildId>,
     user: &User,
 ) -> Result<bool, anyhow::Error> {
-    if let Some(guild) = guild {
-        let guild_id = guild.0;
-
+    if let Some(guild_id) = guild {
         for (guild, role) in ALLOWED_ROLES.iter() {
-            if *guild == guild_id && user.has_role(&ctx.http, *guild, *role).await? {
+            if *guild == guild_id.get() && user.has_role(&ctx.http, *guild, *role).await? {
                 return Ok(true);
             }
         }
@@ -108,40 +101,31 @@ enum MojiraBotCommandResponse {
 }
 
 impl MojiraBotCommandResponse {
-    async fn send(
-        self,
-        ctx: &Context,
-        command: &ApplicationCommandInteraction,
-    ) -> Result<(), anyhow::Error> {
-        let (msg, ephermal) = match self {
+    async fn send(self, ctx: &Context, command: &CommandInteraction) -> Result<(), anyhow::Error> {
+        let (msg, ephemeral) = match self {
             MojiraBotCommandResponse::Success(msg) => (msg, false),
             MojiraBotCommandResponse::Error(msg) => (msg, true),
         };
 
-        reply_to_interaction(ctx, command, msg, ephermal).await
+        reply_to_interaction(ctx, command, msg, ephemeral).await
     }
 }
 
 pub async fn reply_to_interaction(
     ctx: &Context,
-    command: &ApplicationCommandInteraction,
+    command: &CommandInteraction,
     message: &str,
-    ephermal: bool,
+    ephemeral: bool,
 ) -> Result<(), anyhow::Error> {
     command
-        .create_interaction_response(&ctx.http, |response| {
-            response
-                .kind(InteractionResponseType::ChannelMessageWithSource)
-                .interaction_response_data(|data| {
-                    let response_data = data.content(message);
-
-                    if ephermal {
-                        response_data.flags(interaction::MessageFlags::EPHEMERAL);
-                    }
-
-                    response_data
-                })
-        })
+        .create_response(
+            &ctx.http,
+            CreateInteractionResponse::Message(
+                CreateInteractionResponseMessage::new()
+                    .content(message)
+                    .ephemeral(ephemeral),
+            ),
+        )
         .await?;
 
     Ok(())
@@ -150,7 +134,7 @@ pub async fn reply_to_interaction(
 #[serenity::async_trait]
 impl EventHandler for Observer {
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
-        if let Interaction::ApplicationCommand(command) = interaction {
+        if let Interaction::Command(command) = interaction {
             match self.run_command(&ctx, &command).await {
                 Ok(response) => {
                     match response.send(&ctx, &command).await {
@@ -172,43 +156,35 @@ impl EventHandler for Observer {
     async fn ready(&self, ctx: Context, ready: Ready) {
         eprintln!("{} is connected!", ready.user.name);
 
-        let commands = Command::set_global_application_commands(&ctx.http, |commands| {
-            commands
-                .create_application_command(|command| {
-                    command
-                        .name("mojirabot")
-                        .description("Restart or shutdown MojiraBot")
-                        .create_option(|option| {
-                            option
-                                .name("restart")
-                                .description("Restart MojiraBot")
-                                .kind(CommandOptionType::SubCommand)
-                        })
-                        .create_option(|option| {
-                            option
-                                .name("stop")
-                                .description("Stop MojiraBot")
-                                .kind(CommandOptionType::SubCommand)
-                        })
-                })
-                .create_application_command(|command| {
-                    command
-                        .name("autorestart")
-                        .description("Enable or disable autorestart")
-                        .create_option(|option| {
-                            option
-                                .name("on")
-                                .description("Enable autorestart")
-                                .kind(CommandOptionType::SubCommand)
-                        })
-                        .create_option(|option| {
-                            option
-                                .name("off")
-                                .description("Disable autorestart")
-                                .kind(CommandOptionType::SubCommand)
-                        })
-                })
-        })
+        let commands = Command::set_global_commands(
+            &ctx.http,
+            vec![
+                CreateCommand::new("mojirabot")
+                    .description("Restart or shutdown MojiraBot")
+                    .add_option(CreateCommandOption::new(
+                        CommandOptionType::SubCommand,
+                        "restart",
+                        "Restart MojiraBot",
+                    ))
+                    .add_option(CreateCommandOption::new(
+                        CommandOptionType::SubCommand,
+                        "stop",
+                        "Stop MojiraBot",
+                    )),
+                CreateCommand::new("autorestart")
+                    .description("Enable or disable autorestart")
+                    .add_option(CreateCommandOption::new(
+                        CommandOptionType::SubCommand,
+                        "on",
+                        "Enable autorestart",
+                    ))
+                    .add_option(CreateCommandOption::new(
+                        CommandOptionType::SubCommand,
+                        "off",
+                        "Disable autorestart",
+                    )),
+            ],
+        )
         .await;
 
         if let Err(reason) = commands {

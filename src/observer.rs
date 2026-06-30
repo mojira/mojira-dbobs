@@ -1,7 +1,5 @@
-use serenity::{model::prelude::Activity, prelude::Context};
-use std::{
-    time::{Duration, Instant},
-};
+use serenity::{all::ActivityData, prelude::Context};
+use std::time::{Duration, Instant};
 use tokio::sync::{Mutex, MutexGuard};
 
 const SCREEN_NAME: &str = ".mojirabot-";
@@ -55,11 +53,11 @@ impl Observer {
 
         if let Some(ctx) = &self.data().await.ctx {
             let activity = if enabled {
-                Activity::watching("MojiraBot")
+                ActivityData::watching("MojiraBot")
             } else {
-                Activity::listening("commands")
+                ActivityData::listening("commands")
             };
-            ctx.set_activity(activity).await;
+            ctx.set_activity(Some(activity));
         }
     }
 

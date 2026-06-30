@@ -1,6 +1,6 @@
 use std::env;
 
-use serenity::{prelude::GatewayIntents, Client};
+use serenity::{Client, all::ApplicationId, prelude::GatewayIntents};
 
 use observer::Observer;
 
@@ -19,7 +19,7 @@ async fn main() {
 
     let mut client = Client::builder(token, GatewayIntents::non_privileged())
         .event_handler(Observer::new())
-        .application_id(client_id)
+        .application_id(ApplicationId::new(client_id))
         .await
         .expect("Could not create client");
 
