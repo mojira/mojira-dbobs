@@ -2,7 +2,7 @@ use serenity::{all::ActivityData, prelude::Context};
 use std::time::{Duration, Instant};
 use tokio::sync::{Mutex, MutexGuard};
 
-const SCREEN_NAME: &str = ".mojirabot-";
+const SCREEN_NAME: &str = ".discordbot-";
 const CHECK_SH: &str = "./check.sh";
 const RESTART_SH: &str = "./restart.sh";
 const STOP_SH: &str = "./stop.sh";
