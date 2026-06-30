@@ -1,10 +1,11 @@
 use serenity::{model::prelude::Activity, prelude::Context};
 use std::{
-    process::Command,
     time::{Duration, Instant},
 };
 use tokio::sync::{Mutex, MutexGuard};
 
+const SCREEN_NAME: &str = ".mojirabot-";
+const CHECK_SH: &str = "./check.sh";
 const RESTART_SH: &str = "./restart.sh";
 const STOP_SH: &str = "./stop.sh";
 
@@ -67,9 +68,15 @@ impl Observer {
         self.update_activity().await;
     }
 
-    fn run_sh_file(name: &str) -> Result<(), anyhow::Error> {
-        let _output = std::process::Command::new("sh").arg(name).output()?;
-        Ok(())
+    fn run_sh_file(name: &str) -> Result<String, anyhow::Error> {
+        let output = std::process::Command::new("sh").arg(name).output()?;
+        String::from_utf8(output.stdout).map_err(Into::into)
+    }
+
+    /// Checks whether the bot is online.
+    async fn is_bot_online(&self) -> Result<bool, anyhow::Error> {
+        let output = Self::run_sh_file(CHECK_SH)?;
+        Ok(output.contains(SCREEN_NAME))
     }
 
     pub async fn restart_bot(&self) -> Result<&'static str, anyhow::Error> {
@@ -99,29 +106,16 @@ impl Observer {
                 });
 
             let bot_was_online = self.data().await.last_check.unwrap_or(false);
-            let bot_is_online = self.is_bot_online().await;
+            let bot_is_online = self.is_bot_online().await?;
 
             if restart_cooldown_over && !bot_was_online {
-                if let Some(false) = bot_is_online {
+                if !bot_is_online {
                     let _ = self.restart_bot().await?;
                     return Ok(true);
                 }
             }
         }
         Ok(false)
-    }
-
-    /// Checks whether the bot is online. If the check fails, returns [None].
-    async fn is_bot_online(&self) -> Option<bool> {
-        let mut command = Command::new("screen");
-        command.arg("-ls");
-
-        let output = command.output().ok()?;
-        let stdout = String::from_utf8(output.stdout).ok()?;
-
-        let result = stdout.contains(".mojiradiscordbot-");
-        self.data().await.last_check = Some(result);
-        Some(result)
     }
 
     pub async fn run(&self, ctx: Context) {
