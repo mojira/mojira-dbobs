@@ -20,5 +20,5 @@ jobs:
         vps_known_hosts: ${{ secrets.VPS_KNOWN_HOSTS }}
         project_folder: dbobs
         script: |
-          cargo build
+          ./dbobs-build.sh
           ./dbobs-restart.sh
