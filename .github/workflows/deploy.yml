@@ -19,6 +19,4 @@ jobs:
         vps_ssh_key: ${{ secrets.VPS_SSH_KEY }}
         vps_known_hosts: ${{ secrets.VPS_KNOWN_HOSTS }}
         project_folder: dbobs
-        script: |
-          ./dbobs-build.sh
-          ./dbobs-restart.sh
+        script: ./dbobs.sh

@@ -32,12 +32,14 @@ For development, use the Rust build tool `cargo`.
 * Run for development: `cargo run`
 * Build for production: `cargo build --release`
 
-The bot needs the two environment variables `DISCORD_TOKEN` and `DISCORD_USER_ID` for Discord API access.
+You need to create the file `config.json` containing the Discord bot secrets:
+```json
+{
+    "token": "<your bot's discord token here>",
+    "app_id": "<your bot's app id here>"
+}
+```
 
 ## Deployment
 
-mojira-dbobs is not deployed automatically. For manual deployment, only the following files need to be transferred to the server:
-* All `.sh` files (if they changed)
-* The executable file built using `cargo build --release --target x86_64-unknown-linux-gnu` (for 64-bit Linux).
-  After running the command, the executable is located in `target/release/mojira-dbobs`.
-  (Note that you can also run `strip` to reduce the size of this executable file, but this is optional.)
+Everything for the bot to run via CI is included in the `dbobs.sh` script.

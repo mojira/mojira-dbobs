@@ -1,4 +1,4 @@
-use std::env;
+use std::fs::File;
 
 use serenity::{Client, all::ApplicationId, prelude::GatewayIntents};
 
@@ -7,23 +7,32 @@ use observer::Observer;
 mod commands;
 mod observer;
 
+#[derive(serde::Deserialize)]
+struct Config {
+    pub token: String,
+    pub app_id: String,
+}
+
+impl Config {
+    const FILE_PATH: &str = "config.json";
+
+    fn get() -> anyhow::Result<Self> {
+        let json = File::open(Self::FILE_PATH)?;
+        let config = serde_json::from_reader(json)?;
+        Ok(config)
+    } 
+}
+
 #[tokio::main]
-async fn main() {
-    let token = env::var("DISCORD_TOKEN")
-        .expect("Expected a discord token in environment. Start this binary with `DISCORD_TOKEN=<token>` in order to use mojira-dbobs.");
+async fn main() -> anyhow::Result<()> {
+    let config = Config::get()?;
 
-    let client_id: u64 = env::var("DISCORD_CLIENT_ID")
-        .expect("Expected a discord user id in environment. Start this binary with `DISCORD_USER_ID=<id>` in order to use mojira-dbobs.")
-        .parse()
-        .expect("Discord user id is not a valid id");
-
-    let mut client = Client::builder(token, GatewayIntents::non_privileged())
+    let mut client = Client::builder(config.token, GatewayIntents::non_privileged())
         .event_handler(Observer::new())
-        .application_id(ApplicationId::new(client_id))
+        .application_id(ApplicationId::new(config.app_id.parse()?))
         .await
         .expect("Could not create client");
 
-    if let Err(reason) = client.start().await {
-        eprintln!("Client error: {}", reason);
-    }
+    client.start().await?;
+    Ok(())
 }
